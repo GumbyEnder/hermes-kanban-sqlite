@@ -15,13 +15,15 @@ from typing import List, Optional, Tuple
 
 # Database connection pool (single thread-safe instance)
 _db_connection = None
+_db_connection_closed = False
 
 def get_connection(db_path: str) -> sqlite3.Connection:
     """Get a connection from the pool."""
-    global _db_connection
-    if _db_connection is None or _db_connection.closed:
+    global _db_connection, _db_connection_closed
+    if _db_connection is None or _db_connection_closed:
         _db_connection = sqlite3.connect(db_path, timeout=30.0)
         _db_connection.row_factory = sqlite3.Row
+        _db_connection_closed = False
     return _db_connection
 
 def init_schema(db_path: str) -> None:

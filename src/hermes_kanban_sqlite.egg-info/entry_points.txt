@@ -1,0 +1,2 @@
+[console_scripts]
+hermes-kanban-sqlite = hermes_kanban_sqlite.cli:main

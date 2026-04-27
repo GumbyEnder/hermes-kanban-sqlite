@@ -2,357 +2,363 @@
 CLI entry point for hermes-kanban-sqlite.
 
 Usage:
-  hermes-kanban-sqlite init <project> — Initialize a new Kanban board
-  hermes-kanban-sqlite list [column] — List cards, optionally filtered by column
-  hermes-kanban-sqlite add <title> [description] — Add a card to the current board
-  hermes-kanban-sqlite move <card_id> <new_column>
-  hermes-kanban-sqlite info <card_id> — Show detailed card information
+  hermes-kanban-sqlite init <project>         — Initialize a new Kanban board
+  hermes-kanban-sqlite list [column]          — List cards, optionally filtered by column
+  hermes-kanban-sqlite add <title>            — Add a card to the current board
+  hermes-kanban-sqlite move <card_id> <col>   — Move a card between columns
+  hermes-kanban-sqlite info <card_id>         — Show detailed card information
+  hermes-kanban-sqlite comment <card_id> <text> — Add a comment to a card
+  hermes-kanban-sqlite dependency <a> <b>     — Create blocking relationship
 """
 import click
 from pathlib import Path
 import sqlite3
 
-from .database import init_schema, get_connection, SQLiteDatabase
+from .database import init_schema, get_connection, STANDARD_COLUMNS
 from .kanban import (
+    KanbanError,
     create_board,
     list_boards,
     list_cards,
+    create_card,
     get_card,
     update_card,
     archive_card,
-    delete_card,
     add_comment,
+    add_dependency,
     get_dependencies,
+    get_all_columns,
 )
 
-class KanbanBoardError(Exception):
-    """CLI error for kanban operations."""
-    pass
+DEFAULT_DB_DIR = Path.home() / ".hermes"
+DEFAULT_DB_PATH = DEFAULT_DB_DIR / "kanban.db"
+
+
+def _get_db_path() -> str:
+    """Return the default database path, creating parent directory if needed."""
+    DEFAULT_DB_DIR.mkdir(parents=True, exist_ok=True)
+    return str(DEFAULT_DB_PATH)
+
 
 @click.group(invoke_without_command=True)
-def cli():
+@click.pass_context
+def cli(ctx):
     """Hermes Kanban SQLite — Standalone terminal Kanban CLI/TUI.
-    
-    Initialize with `hermes-kanban-sqlite init <project>` or use the default DB at ~/.hermes/kanban.db
-    """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"📁 No Kanban database found at {db_path}")
-        click.echo("Run `hermes-kanban-sqlite init <project>` to create a new board.")
-        # Show available commands
-        help_menu = "\nAvailable commands:\n"
-        for param in cli.params:
-            if param.name and not param.hidden:
-                help_menu += f"  {param.name}\n"
-        click.echo(help_menu)
-    else:
-        click.echo(f"✅ Kanban database found at {db_path}")
 
-# Subcommands
+    Initialize with 'hermes-kanban-sqlite init <project>' or use
+    commands directly against the default database at ~/.hermes/kanban.db
+    """
+    if ctx.invoked_subcommand is None:
+        db_path = _get_db_path()
+        if Path(db_path).exists():
+            click.echo(f"✅ Kanban database: {db_path}")
+            boards = list_boards(db_path)
+            if boards:
+                click.echo(f"\n📋 {len(boards)} board(s) found:")
+                for b in boards:
+                    click.echo(f"  • {b['name']} (id={b['id']})")
+            click.echo("\nRun 'hermes-kanban-sqlite --help' for commands.")
+        else:
+            click.echo(f"📁 No Kanban database at {db_path}")
+            click.echo("Run 'hermes-kanban-sqlite init <project>' to create a board.")
+
+
 @cli.command()
-def init(project_name: str, db_path: Path = None):
+@click.argument("project_name")
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path (default: ~/.hermes/kanban.db)")
+def init(project_name, db_path):
     """Initialize a new Kanban board.
-    
-    PROJECT — Name for the new board (e.g., "Project-X-Backlog")
+
+    PROJECT_NAME — Name for the new board (e.g. "Project-X-Backlog")
     """
-    if not project_name:
-        click.echo("❌ Error: Project name required.\nUsage: hermes-kanban-sqlite init <project>")
-        return
-    
-    # Default to home directory if no db_path provided
     if db_path is None:
-        default_db = Path.home() / f".hermes/{project_name}.db"
-        click.echo(f"📁 Creating board at {default_db}")
-    else:
-        default_db = Path(db_path).resolve()
-    
-    # Initialize schema
-    with SQLiteDatabase(default_db) as db:
-        try:
-            init_schema(str(default_db))
-            click.echo(f"✅ Schema initialized successfully\n")
-            click.echo(f"📋 Board: {project_name}")
-            click.echo(f"💾 Database: {default_db}")
-            
-            # Create default columns
-            for name, desc, color, _ in STANDARD_COLUMNS:
-                try:
-                    create_column(str(default_db), -1, name, desc, color)
-                except Exception as e:
-                    click.echo(f"⚠️  Column '{name}' may already exist: {e}")
-            
-            click.echo("✅ Default columns created successfully")
-            click.echo(f"\n🎯 Next steps:\n  - hermes-kanban-sqlite list    — View all cards
-  - hermes-kanban-sqlite add <title> — Add a new card")
-            
-        except KanbanError as e:
-            click.echo(f"❌ Error: {e}")
+        db_path = _get_db_path()
 
-@cli.command(name='list')
-def list_cards(column_name: str = None, status: str = None):
-    """List cards on the current board.
-    
-    Use `hermes-kanban-sqlite list [column]` to filter by column.\n
-    Examples:\n      hermes-kanban-sqlite list                  — List all cards\n      hermes-kanban-sqlite list To Do            — Filter to "To Do" column only\n    """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            cards = list_cards(str(db_path), column_name=column_name, status=status)
-            if not cards:
-                click.echo("📭 No cards to display\n")
-                return
-            
-            # Display in a readable format
-            for card in cards:
-                tags = " | ".join(t["name"] for t in card.get("tags", []))
-                comments_count = len(card.get("comments", []))
-                status_icon = "🟢" if card["status"] == "active" else f"⚪ ({card['status']})"
-                
-                click.echo(f\"  {status_icon} [{len(str(card['id']))}] {card['title']}\")
-                click.echo(f\"      Column: {card['column_name']} | Tags: {tags if tags else '—'}\")
-                if comments_count:
-                    click.echo(f\"      Comments: {comments_count}\")
-            
-        except KanbanError as e:
-            click.echo(f"❌ Error: {e}")
+    conn = get_connection(db_path)
+    try:
+        init_schema(db_path)
+        click.echo(f"✅ Schema initialized")
 
-@cli.command()
-def add(title: str, description: str = None):
-    """Add a new card to the current board.
-    
-    Title — Short title for the card\nDescription — Optional detailed description (defaults to repeating title)
-    """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            if description is None:
-                description = f"Description: {title}"
-            
-            card_id = create_card(
-                str(db_path),
-                board_id=-1,  # Global cards table (can be enhanced per-board later)
-                title=title,
-                column_name="To Do",  # Default starting column
-                description=description
-            )
-            click.echo(f"✅ Card created successfully\n")
-            click.echo(f\"  ID: {card_id}\")
-            click.echo(f\"  Title: {title}\")
-            click.echo(f\"  Description: {description}\")
-            
-        except KanbanError as e:
-            click.echo(f"❌ Error: {e}")
+        board_id = create_board(db_path, project_name)
+        click.echo(f"📋 Board created: {project_name} (id={board_id})")
 
-@cli.command()
-def move(card_id: int, new_column: str = None):
-    """Move a card to a different column.
-    
-    CARD_ID — ID of the card from `hermes-kanban-sqlite list`
-    NEW_COLUMN — Target column (e.g., "Backlog", "To Do", "In Progress", etc.)
-    """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            # First, get the card to know its title
-            card = get_card(str(db_path), card_id)
-            if not card:
-                click.echo(f"❌ Card with ID {card_id} not found\n")
-                return
-            
-            original_column = card["column_name"]
-            new_description = f"Moved from {original_column} → {new_column or 'Backlog'}"
-            
-            # Update the card
-            update_card(
-                str(db_path),
-                card_id=card_id,
-                description=new_description,
-                column_name=new_column if new_column else "Backlog"  # Default to Backlog if not specified
-            )
-            click.echo(f"✅ Card moved successfully\n")
-            click.echo(f\"  ID: {card_id}\")
-            click.echo(f\"  From: {original_column} → To: {new_column or 'Backlog'}\")
-            
-        except KanbanError as e:
-            click.echo(f"❌ Error: {e}")
-
-@cli.command()
-def info(card_id: int = None):
-    """Show detailed information about a card.
-    
-    CARD_ID — Optional. If not specified, shows the most recently added card.\n    """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            if card_id is None:
-                # Get most recent card (by created_at DESC)
-                cursor = get_connection(str(db_path)).cursor()
+        # Seed standard columns
+        for name, desc, color, order in STANDARD_COLUMNS:
+            cursor = conn.cursor()
+            try:
                 cursor.execute(
-                    "SELECT id, title, column_name FROM cards WHERE status != 'deleted' ORDER BY created_at DESC LIMIT 1"
+                    "INSERT OR IGNORE INTO columns (name, description, color, sort_order) "
+                    "VALUES (?, ?, ?, ?)",
+                    (name, desc, color, order),
                 )
-                row = cursor.fetchone()
-                if not row:
-                    click.echo("📭 No recent cards found\n")
-                    return
-                card_id = row[0]
-            
-            card = get_card(str(db_path), card_id)
-            if not card:
-                click.echo(f"❌ Card with ID {card_id} not found\n")
-                return
-            
-            # Display card details
-            click.echo(f\"🎴 CARD DETAILS\")
-            click.echo(f\"  ID:   {card['id']}\")
-            click.echo(f\"  Title:    {card['title']}\")
-            click.echo(f\"  Column:   {card['column_name']}\")
-            click.echo(f\"  Status:   {'🟢 active' if card['status'] == 'active' else f'⚪ {card['status']}' }\")
-            
-            # Tags
-            tags = [t for t in card.get("tags", [])]
-            if tags:
-                click.echo(f\"  Tags:\   {' | '.join(t['name'] for t in tags)}\")
-            else:
-                click.echo(f\"  Tags:    —\")
-            
-            # Comments
-            comments = card.get("comments", [])
-            if comments:
-                click.echo(f\"  Comments:\ ({len(comments)})\")
-                for comment in comments:
-                    click.echo(f\"    • [{comment['created_at']}] {comment['author']}:\")
-                    click.echo(f\"      {comment['content']}\")
-            else:
-                click.echo(f\"  Comments: —\")
-            
-        except KanbanError as e:
-            click.echo(f"❌ Error: {e}")
+            except sqlite3.IntegrityError:
+                pass
+        conn.commit()
+        click.echo("✅ Standard columns seeded")
+
+        click.echo(f"\n💾 Database: {db_path}")
+        click.echo("🎯 Next: hermes-kanban-sqlite add <title> — Add a card")
+
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
 
 @cli.command()
-def delete(card_id: int):
-    """Soft-delete (archive) a card.
-    
-    This permanently removes the card from active view but keeps it in the database for audit purposes.\n
-    Use `hermes-kanban-sqlite restore <card_id>` to undelete a card.\n    """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            card = get_card(str(db_path), card_id)
-            if not card:
-                click.echo(f"❌ Card with ID {card_id} not found\n")
-                return
-            
-            archive_card(str(db_path), card_id)
-            click.echo(f"✅ Card archived successfully\n")
-            click.echo(f\"  ID: {card['id']}\")
-            click.echo(f\"  Title: {card['title']}\")
-            click.echo("💾 The card has been soft-deleted and can be restored if needed.")
-            
-        except KanbanError as e:
-            click.echo(f"❌ Error: {e}")
+@click.argument("column", required=False)
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def list(column, db_path):
+    """List all cards, optionally filtered by COLUMN."""
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        cards = list_cards(db_path, column_name=column)
+        columns = get_all_columns(db_path)
+
+        if not cards:
+            click.echo("📭 No cards found.")
+            if column:
+                click.echo(f"   (filtered by column: {column})")
+            return
+
+        # Group by column
+        by_column = {}
+        for col in columns:
+            by_column[col["name"]] = []
+        for card in cards:
+            cn = card.get("column_name", "Unknown")
+            if cn not in by_column:
+                by_column[cn] = []
+            by_column[cn].append(card)
+
+        for col_name, col_cards in by_column.items():
+            if column and col_name != column:
+                continue
+            if not col_cards:
+                continue
+            color = next((c["color"] for c in columns if c["name"] == col_name), "#6c757d")
+            click.echo(click.style(f"\n📂 {col_name} ({len(col_cards)})", fg="bright_white", bold=True))
+            for card in col_cards:
+                click.echo(f"  [{card['id']}] {card['title']}")
+
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
 
 @cli.command()
-def restore(card_id: int):
-    """Restore a previously archived card."""
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            cursor = get_connection(str(db_path)).cursor()
-            cursor.execute(
-                "SELECT id, title FROM cards WHERE id = ? AND status = 'archived'",
-                (card_id,) if card_id else ()
-            )
-            row = cursor.fetchone()
-            if not row:
-                click.echo(f"❌ Card with ID {card_id} not found or already active\n")
-                return
-            
-            # Restore by deleting the record (SQLite doesn't have a true "restore", we'd need a history table)
-            # For now, just note that this would require schema modification to support proper undo\n            click.echo(f"⚠️  Schema limitation: True restore requires history tracking in the database.")
-            click.echo(f"💾 The card cannot be fully restored without modifying the schema.")
-        except Exception as e:
-            click.echo(f"❌ Error: {e}")
+@click.argument("title")
+@click.option("--column", default="To Do", help="Column to place card in (default: 'To Do')")
+@click.option("--description", default="", help="Card description")
+@click.option("--tags", default="", help="Comma-separated tags")
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def add(title, column, description, tags, db_path):
+    """Add a new card to the board."""
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        boards = list_boards(db_path)
+        if not boards:
+            click.echo("❌ No boards exist. Run 'hermes-kanban-sqlite init <project>' first.", err=True)
+            return
+        board_id = boards[0]["id"]  # Use the first board
+
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+
+        card_id = create_card(db_path, board_id, title, column, description or "", tag_list)
+        click.echo(f"✅ Card created: [{card_id}] {title}")
+        click.echo(f"   Column: {column}")
+
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
 
 @cli.command()
-def comment(card_id: int, content: str = None):
-    """Add a comment to a card."""
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            if content is None or not content.strip():
-                click.echo("❌ Error: Comment text required\n")
-                return
-            
-            comment_id = add_comment(
-                str(db_path),
-                card_id=card_id,
-                author="CLI User",
-                content=content or ""
-            )
-            click.echo(f"✅ Comment added successfully (ID: {comment_id})\n")
-        except Exception as e:
-            click.echo(f"❌ Error: {e}")
+@click.argument("card_id", type=int)
+@click.argument("column")
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def move(card_id, column, db_path):
+    """Move a card to a different column.
 
-@cli.command()
-def dependency(card1_id: int, card2_id: int):
-    """Create a blocking relationship between two cards.
-    
-    CARD1 — The blocker (this work blocks the other)
-    CARD2 — The blocked-by (depends on CARD1 being completed first)
+    CARD_ID — Numeric ID of the card
+    COLUMN — Target column name (e.g. 'In Progress', 'Done')
     """
-    db_path = Path.home() / ".hermes/kanban.db"
-    if not db_path.exists():
-        click.echo(f"❌ No database found at {db_path}\nRun `hermes-kanban-sqlite init <project>` first.")
-        return
-    
-    with SQLiteDatabase(str(db_path)) as db:
-        try:
-            # Validate both cards exist
-            card1 = get_card(str(db_path), card1_id)
-            card2 = get_card(str(db_path), card2_id)
-            if not card1 or not card2:
-                click.echo(f"❌ One or both cards not found\n")
-                return
-            
-            dep_id = add_dependency(
-                str(db_path),
-                blocker_card_id=card1["id"],
-                blocked_by_card_id=card2["id"]
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        card = get_card(db_path, card_id)
+        if not card:
+            click.echo(f"❌ Card {card_id} not found.", err=True)
+            return
+
+        old_column = card["column_name"]
+        if old_column == column:
+            click.echo(f"ℹ️  Card {card_id} is already in '{column}'.")
+            return
+
+        ok = update_card(db_path, card_id, column_name=column)
+        if ok:
+            click.echo(f"✅ Card {card_id} moved: '{old_column}' → '{column}'")
+        else:
+            click.echo(f"❌ Failed to move card {card_id}.", err=True)
+
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
+
+@cli.command()
+@click.argument("card_id", type=int)
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def info(card_id, db_path):
+    """Show detailed information for a card."""
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        card = get_card(db_path, card_id)
+        if not card:
+            click.echo(f"❌ Card {card_id} not found.", err=True)
+            return
+
+        click.echo(click.style(f"\n🎴 Card #{card['id']}", fg="bright_white", bold=True))
+        click.echo(f"   Title:       {card['title']}")
+        click.echo(f"   Column:      {card['column_name']}")
+        click.echo(f"   Status:      {card['status']}")
+        click.echo(f"   Description: {card.get('description', '') or '(none)'}")
+        click.echo(f"   Created:     {card.get('created_at', '')}")
+        click.echo(f"   Updated:     {card.get('updated_at', '')}")
+
+        # Tags
+        tags = card.get("tags", [])
+        if tags:
+            tag_names = ", ".join(t["name"] for t in tags)
+            click.echo(f"   Tags:        {tag_names}")
+        else:
+            click.echo(f"   Tags:        (none)")
+
+        # Comments
+        comments = card.get("comments", [])
+        if comments:
+            click.echo(f"\n💬 Comments ({len(comments)}):")
+            for c in comments:
+                click.echo(f"   [{c['created_at']}] {c['author']}: {c['content']}")
+
+        # Dependencies
+        deps = get_dependencies(db_path, card_id)
+        blockers = deps.get("blockers", [])
+        blocked_by = deps.get("blocked_by", [])
+        if blockers:
+            click.echo(f"\n🔒 Blocked by:")
+            for b in blockers:
+                click.echo(f"   [{b['id']}] {b['title']} ({b['column_name']})")
+        if blocked_by:
+            click.echo(f"\n🔓 Blocks:")
+            for b in blocked_by:
+                click.echo(f"   [{b['id']}] {b['title']} ({b['column_name']})")
+
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
+
+@cli.command()
+@click.argument("card_id", type=int)
+@click.argument("text")
+@click.option("--author", default="CLI User", help="Comment author name")
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def comment(card_id, text, author, db_path):
+    """Add a comment to a card."""
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        comment_id = add_comment(db_path, card_id, author, text)
+        click.echo(f"✅ Comment added (id={comment_id}) to card {card_id}")
+
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
+
+@cli.command()
+@click.argument("blocker_id", type=int)
+@click.argument("blocked_id", type=int)
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def dependency(blocker_id, blocked_id, db_path):
+    """Create a blocking relationship between cards.
+
+    BLOCKER_ID — The card that blocks another
+    BLOCKED_ID — The card that is blocked
+    """
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        dep_id = add_dependency(db_path, blocker_id, blocked_id)
+        click.echo(f"✅ Dependency created (id={dep_id}): card {blocker_id} blocks card {blocked_id}")
+
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
+
+@cli.command()
+@click.argument("card_id", type=int)
+@click.option("--yes", is_flag=True, help="Skip confirmation prompt")
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path")
+def archive(card_id, yes, db_path):
+    """Archive (soft-delete) a card."""
+    if db_path is None:
+        db_path = _get_db_path()
+
+    try:
+        card = get_card(db_path, card_id)
+        if not card:
+            click.echo(f"❌ Card {card_id} not found.", err=True)
+            return
+
+        if not yes:
+            click.confirm(
+                f"Archive card [{card_id}] '{card['title']}'?",
+                abort=True
             )
-            click.echo(f"✅ Dependency created successfully\n")
-            click.echo(f\"  Blocker:   {card1['title']} (ID: {card1['id']})\")
-            click.echo(f\"  Blocked by:{card2['title']} (ID: {card2['id']})\")
-            
-        except Exception as e:
-            click.echo(f"❌ Error: {e}")
+
+        ok = archive_card(db_path, card_id)
+        if ok:
+            click.echo(f"✅ Card {card_id} archived.")
+        else:
+            click.echo(f"❌ Failed to archive card {card_id}.", err=True)
+
+    except click.Abort:
+        click.echo("Cancelled.")
+    except KanbanError as e:
+        click.echo(f"❌ {e}", err=True)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+
+
+def main():
+    """Entry point for pyproject.toml console_scripts."""
+    cli()
+
 
 if __name__ == "__main__":
-    cli()
+    main()

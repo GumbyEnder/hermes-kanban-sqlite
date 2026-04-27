@@ -6,7 +6,7 @@ This module handles all business logic independent of TUI rendering or CLI parsi
 from pathlib import Path
 from typing import List, Optional, Tuple
 import sqlite3
-from .database import init_schema, get_connection, STANDARD_COLUMNS, SQLiteDatabase
+from .database import init_schema, get_connection, STANDARD_COLUMNS
 
 class KanbanError(Exception):
     """Base exception for kanban operations."""
@@ -94,12 +94,22 @@ def create_card(db_path: str, board_id: int, title: str, column_name: str, descr
     
     # Add tags if provided
     if tags:
-        cursor.execute("SELECT id FROM tags WHERE name = ?", (tag,))
-        tag_id = cursor.fetchone()[0]
-        cursor.execute(
-            "INSERT OR IGNORE INTO card_tags (card_id, tag_id) VALUES (?, ?)",
-            (card_id, tag_id)
-        )
+        for tag_name in tags:
+            # Look up or create tag
+            cursor.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
+            row = cursor.fetchone()
+            if row:
+                tag_id = row[0]
+            else:
+                cursor.execute(
+                    "INSERT INTO tags (name) VALUES (?)",
+                    (tag_name,)
+                )
+                tag_id = cursor.lastrowid
+            cursor.execute(
+                "INSERT OR IGNORE INTO card_tags (card_id, tag_id) VALUES (?, ?)",
+                (card_id, tag_id)
+            )
     
     conn.commit()
     return card_id
@@ -280,17 +290,20 @@ class SQLiteDatabase:
     def __init__(self, db_path: str):
         self.db_path = Path(db_path).resolve()
         self._conn = None
-    
+        self._closed = False
+
     @property
     def connection(self) -> sqlite3.Connection:
-        if not self._conn or self._conn.closed:
+        if not self._conn or self._closed:
             self._conn = get_connection(str(self.db_path))
+            self._closed = False
         return self._conn
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._conn and not self._conn.closed:
+        if self._conn and not self._closed:
             self._conn.close()
+            self._closed = True
         return False  # Don't suppress exceptions
