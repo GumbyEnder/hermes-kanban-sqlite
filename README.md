@@ -1,88 +1,10 @@
-# hermes-kanban-sqlite — Standalone Terminal Kanban CLI/TUI
+# ⚠️ DEPRECATED — Merged into [`hermes-kanban`](https://github.com/GumbyEnder/hermes-kanban)
 
-A SQLite-backed Kanban board tool for terminal use (non-Obsidian). Provides both CLI commands and an interactive TUI display.
+This standalone repo has been **merged into the main hermes-kanban repository** as `feature/sqlite-cli`.
 
-## 📖 Features
+The SQLite CLI/TUI now lives at:
+- **Repo:** [GumbyEnder/hermes-kanban](https://github.com/GumbyEnder/hermes-kanban)
+- **Branch:** `feature/sqlite-cli`
+- **Path:** `cli/hermes_kanban_sqlite/`
 
-### CLI Commands
-```bash
-hermes-kanban-sqlite init <project> — Initialize a new board
-hermes-kanban-sqlite list [column]    — List cards, optionally filtered by column
-hermes-kanban-sqlite add <title>      — Add a new card to "To Do" column
-hermes-kanban-sqlite move <id>        — Move a card between columns
-hermes-kanban-sqlite info <card-id>   — Show detailed card information
-hermes-kanban-sqlite comment <id>     — Add a comment to a card
-hermes-kanban-sqlite dependency <1> <2>  — Create blocking relationship
-```
-
-### TUI Features
-- 🖥️ Interactive terminal display with mouse support
-- 🎯 Card hover/selection for editing
-- 🔄 Real-time updates via polling backend (future)
-- 📊 Column-based kanban layout (Backlog → To Do → In Progress → Review → Done → Blocked)
-
-## 🚀 Quick Start
-
-### Installation
-```bash
-cd /mnt/nas/github_repos/hermes-kanban-sqlite
-pip install -e "."
-```
-
-### Initialize a Board
-```bash
-hermes-kanban-sqlite init "Project-X-Backlog"
-```
-This creates `~/.hermes/Project-X-Backlog.db` with default columns.
-
-### Basic Operations
-```bash
-# Add a card
-terminal> hermes-kanban-sqlite add "Implement API endpoint for user login"  
-terminal> hermes-kanban-sqlite add "Fix critical security vulnerability in auth middleware"
-
-# Move to "In Progress"
-terminal> hermes-kanban-sqlite move <card-id>
-```
-
-### TUI Launch
-```bash
-terminal> hermes-kanban-sqlite tui  # or similar command once implemented
-```
-
-## 📁 Project Structure
-
-```
-hermes-kanban-sqlite/
-  src/
-    hermes_kanban_sqlite/
-      __init__.py       — Package initialization
-      database.py       — SQLite schema and connection pooling
-      kanban.py         — CRUD business logic (cards, columns, boards)
-      cli.py            — CLI entry point with Click
-      tui.py            — Terminal UI rendering with Textual
-  pyproject.toml        — Project metadata and dependencies
-  README.md             — This file
-```
-
-## 🛠️ Dependencies
-
-- `textual>=0.47` — Rich terminal UI framework
-- `click>=8.1` — CLI parser and command registration
-- SQLite3 (builtin) — No external database dependency required
-
-## 🔮 Future Enhancements
-
-- [ ] Drag-and-drop via mouse events in TUI
-- [ ] WebSocket backend for real-time updates
-- [ ] GitHub Issues → Kanban sync
-- [ ] Dashboard widget integration (SVG/PNG exports)
-- [ ] Advanced filtering: tags, blocked status, overdue cards
-
-## 📄 License
-
-MIT — See LICENSE file.
-
-## 👤 Author
-
-GumbyEnder <48990701+GumbyEnder@users.noreply.github.com>
+All future development happens there. This repo is preserved for history only.
