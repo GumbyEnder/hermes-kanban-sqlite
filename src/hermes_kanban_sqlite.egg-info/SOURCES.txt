@@ -11,3 +11,6 @@ src/hermes_kanban_sqlite.egg-info/dependency_links.txt
 src/hermes_kanban_sqlite.egg-info/entry_points.txt
 src/hermes_kanban_sqlite.egg-info/requires.txt
 src/hermes_kanban_sqlite.egg-info/top_level.txt
+tests/test_cli.py
+tests/test_database.py
+tests/test_kanban.py

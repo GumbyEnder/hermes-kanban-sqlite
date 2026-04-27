@@ -29,6 +29,7 @@ from .kanban import (
     get_dependencies,
     get_all_columns,
 )
+from .tui import run_tui
 
 DEFAULT_DB_DIR = Path.home() / ".hermes"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "kanban.db"
@@ -367,6 +368,23 @@ def archive(card_id, yes, db_path):
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
         raise SystemExit(1)
+
+
+@cli.command()
+@click.option("--db-path", type=click.Path(), default=None,
+              help="Custom database path (default: ~/.hermes/kanban.db)")
+def tui(db_path):
+    """Launch the interactive terminal UI (Textual)."""
+    if db_path is None:
+        db_path = _get_db_path()
+
+    if not Path(db_path).exists():
+        click.echo(f"❌ No database at {db_path}", err=True)
+        click.echo("Run 'hermes-kanban-sqlite init <project>' first.")
+        raise SystemExit(1)
+
+    click.echo(f"🎬 Launching Kanban TUI with database: {db_path}")
+    run_tui(db_path)
 
 
 def main():

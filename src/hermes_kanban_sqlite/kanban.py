@@ -58,8 +58,8 @@ def create_column(db_path: str, board_id: int, name: str, description: str = "",
         raise KanbanError(f"Column '{name}' already exists on this board")
     
     cursor.execute(
-        "INSERT INTO columns (board_id, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?)",
-        (board_id, name, description or f"Column: {name}", color.lower(), sort_order)
+        "INSERT INTO columns (name, description, color, sort_order) VALUES (?, ?, ?, ?)",
+        (name, description or f"Column: {name}", color.lower(), sort_order)
     )
     conn.commit()
     return cursor.lastrowid
