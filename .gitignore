@@ -1,0 +1,115 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+so
+pyd
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.DS_Store
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+cachefile
+.mypy_cache/
+typeshed.*/
+*.pyi
+
+# Coverage
+htmlcov/
+
+# Translations
+*.mo
+*.pot
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node
+node_modules/
+dist/
+build/
+.npm/
+npx/
+yarn/
+xstate/
+
+# Pylint
+.pytest_cache/
+
+# Celery
+celerybeat-schedule.celerybeat_tdb
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# PyCharm
+system/python.xml
+
+# Flask
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapyproject
+
+# Sphinx
+doc/_build/
+
+# PyBuilder
+pyb/
+tmp-*/
+
+# Cargo
+/target
+Cargo.lock
+
+# Gradle
+.gradle
+local.properties
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+migrations/*.db
+*.sqlite3
+*.sqlite
+*.db-journal
