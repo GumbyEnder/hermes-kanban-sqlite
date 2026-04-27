@@ -149,7 +149,7 @@ def list_cards(db_path: str, column_name: Optional[str] = None, status: Optional
     conn = get_connection(db_path)
     cursor = conn.cursor()
     
-    query = "SELECT * FROM cards WHERE status != 'deleted'"
+    query = "SELECT * FROM cards WHERE status NOT IN ('deleted', 'archived')"
     params = []
     
     if column_name is not None:

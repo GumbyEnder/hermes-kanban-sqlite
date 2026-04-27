@@ -26,6 +26,15 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         _db_connection_closed = False
     return _db_connection
 
+
+def reset_connection() -> None:
+    """Reset the connection pool (for testing)."""
+    global _db_connection, _db_connection_closed
+    if _db_connection is not None and not _db_connection_closed:
+        _db_connection.close()
+    _db_connection = None
+    _db_connection_closed = False
+
 def init_schema(db_path: str) -> None:
     """Initialize all tables and indexes."""
     conn = get_connection(db_path)

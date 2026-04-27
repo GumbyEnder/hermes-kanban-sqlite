@@ -102,8 +102,10 @@ def init(project_name, db_path):
 
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -176,8 +178,10 @@ def add(title, column, description, tags, db_path):
 
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -213,8 +217,10 @@ def move(card_id, column, db_path):
 
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -270,8 +276,10 @@ def info(card_id, db_path):
 
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -291,8 +299,10 @@ def comment(card_id, text, author, db_path):
 
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -315,8 +325,10 @@ def dependency(blocker_id, blocked_id, db_path):
 
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -351,8 +363,10 @@ def archive(card_id, yes, db_path):
         click.echo("Cancelled.")
     except KanbanError as e:
         click.echo(f"❌ {e}", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
 
 
 def main():
